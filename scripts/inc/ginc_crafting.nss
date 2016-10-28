@@ -3005,7 +3005,7 @@ void ExecuteSalvage(object oItem, object oCrafter)
 		return;
 	}
 
-	if (iRankRQ - 5 > GetSkillRank(SKILL_SPELLCRAFT, oCrafter)// check required skill level
+	if (iRankRQ - 5 > GetSkillRank(SKILL_SPELLCRAFT, oCrafter) // check required skill level
 		&& StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 28))) // TCC_Toggle_SalvagingRequiresMinSkill
 	{
 		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
@@ -3023,7 +3023,7 @@ void ExecuteSalvage(object oItem, object oCrafter)
 		if (iRoll > iChance) // fail.
 		{
 			NotifyPlayer(oCrafter, "<c=turquoise>Salvage Stack :</c> <c=red>* Failure *</c> <c=blue>( d100 : "
-								  + IntToString(iRoll) + " vs " + IntToString(iChance) + " )</c>");
+						+ IntToString(iRoll) + " vs " + IntToString(iChance) + " )</c>");
 			NotifyPlayer(oCrafter, "There was not enough left of the stack to salvage anything."); //huh
 
 			DestroyObject(oItem);
@@ -3031,10 +3031,10 @@ void ExecuteSalvage(object oItem, object oCrafter)
 		}
 		else
 			NotifyPlayer(oCrafter, "<c=turquoise>Salvage Stack :</c> <c=green>* Success *</c> <c=blue>( d100 : "
-								  + IntToString(iRoll) + " vs " + IntToString(iChance) + " )</c>");
+						+ IntToString(iRoll) + " vs " + IntToString(iChance) + " )</c>");
 	}
 
-	string sResrefList; // do a skill check and create the products - auto success if no skillcheck required
+	string sResrefList; // auto success if no skillcheck required
 	if (!StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 29)) // TCC_Toggle_SalvagingUsesSkillCheck
 		|| GetIsSkillSuccessful(oCrafter, SKILL_SPELLCRAFT, iSalvageDC))
 	{
