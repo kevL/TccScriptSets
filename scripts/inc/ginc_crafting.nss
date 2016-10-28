@@ -2974,74 +2974,89 @@ void ExecuteSalvage(object oItem, object oCrafter)
 	while (GetIsItemPropertyValid(ipScan))
 	{
 		iSalvageId = GetSalvageId(ipScan);
-		if (iSalvageId != -1)									// process only if ip is valid for salvage
+		if (iSalvageId != -1) // process only if ip is valid for salvage
 		{
 			iSalvageGrade = GetSalvageGrade(ipScan, iSalvageId);
 
-			iScanDC = GetSalvageDC(iSalvageId, iSalvageGrade);	// 'iSalvageDC' will be the highest DC
+			iScanDC = GetSalvageDC(iSalvageId, iSalvageGrade);
 			if (iScanDC > iSalvageDC)
-				iSalvageDC = iScanDC;
+				iSalvageDC = iScanDC;	// 'iSalvageDC' will be the highest DC
 
-			if (iScanDC < iRankRQ)								// 'iRankRQ' will be the lowest DC
-				iRankRQ = iScanDC;
+			if (iScanDC < iRankRQ)
+				iRankRQ = iScanDC;		// 'iRankRQ' will be the lowest DC
 
-			if (sResrefsFailure != "")							// assemble each ip's salvage-product
-				sResrefsFailure += ",";
 
-			if (sResrefsSuccess != "")
-				sResrefsSuccess += ",";
+			sEss = GetSalvageEssence(iSalvageId, iSalvageGrade); // assemble each ip's salvage-product
 
-			sEss = GetSalvageEssence(iSalvageId, iSalvageGrade);
+			if (sResrefsFailure != "") sResrefsFailure += REAGENT_LIST_DELIMITER;
 			sResrefsFailure += sEss;
-			sResrefsSuccess += sEss + "," + GetSalvageGem(iSalvageId, iSalvageGrade);
+
+			if (sResrefsSuccess != "") sResrefsSuccess += REAGENT_LIST_DELIMITER;
+			sResrefsSuccess += sEss + REAGENT_LIST_DELIMITER + GetSalvageGem(iSalvageId, iSalvageGrade);
 		}
 		ipScan = GetNextItemProperty(oItem);
 	}
 
 	if (sResrefsFailure == "")
 	{
-		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
+		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SALVAGE + NOTE_RESULT_FAIL
 					+ "There are no materials that can be salvaged.");
 		return;
 	}
 
-	if (iRankRQ - 5 > GetSkillRank(SKILL_SPELLCRAFT, oCrafter) // check required skill level
-		&& StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 28))) // TCC_Toggle_SalvagingRequiresMinSkill
+	// AutoSuccess if no skillcheck required
+	int bAutoSuccess = !StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 29)); // TCC_Toggle_SalvagingUsesSkillCheck
+
+	if (!bAutoSuccess
+		&& StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 28))	// TCC_Toggle_SalvagingRequiresMinSkill
+		&& iRankRQ - 5 > GetSkillRank(SKILL_SPELLCRAFT, oCrafter))
 	{
-		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
+		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SALVAGE + NOTE_RESULT_FAIL
 					+ "Your Spellcraft is not high enough to salvage any materials.");
 		return;
 	}
 
+	// note: AutoSuccess does not pertain to the stack-check
 	int iStackMax = StringToInt(Get2DAString(BASEITEMS_2DA, COL_BASEITEMS_STACKING, GetBaseItemType(oItem)));
-	if (iStackMax > 1) // check the chance of distilling a stack
-	{
-		int iStackSize = GetItemStackSize(oItem);
-		int iChance = FloatToInt(100.f * (IntToFloat(iStackSize) / IntToFloat(iStackMax)));
+	if (iStackMax > 1)	// check the chance of distilling a stackable item
+	{					// If oItem is stackable, even if its current stacksize is only 1, this check is made:
+		int iStackSize = GetItemStackSize(oItem); // the "more full" the current stack is, the better chance of success
+		int iStackSuccessProb = FloatToInt(IntToFloat(iStackSize) / IntToFloat(iStackMax) * 100.f);
+
+		iStackSuccessProb += GetSkillRank(SKILL_CRAFT_ALCHEMY, oCrafter); // kL_add. Ultimate success is based on Spellcraft though.
+
+		if (GetHasFeat(FEAT_LUCKY, oCrafter, TRUE)) // why not.
+			iStackSuccessProb += 10;
 
 		int iRoll = d100();
-		if (iRoll > iChance) // fail.
+		if (iRoll > iStackSuccessProb) // fail. If it fails player gets nothing.
 		{
-			NotifyPlayer(oCrafter, "<c=turquoise>Salvage Stack :</c> <c=red>* Failure *</c> <c=blue>( d100 : "
-						+ IntToString(iRoll) + " vs " + IntToString(iChance) + " )</c>");
-			NotifyPlayer(oCrafter, "There was not enough left of the stack to salvage anything."); //huh
-
+			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SALVAGE_STACK
+						+ "<c=red>* Failure *</c> <c=blue>( d100 : "
+						+ IntToString(iRoll) + " vs " + IntToString(iStackSuccessProb) + " )</c>");
 			DestroyObject(oItem);
 			return;
 		}
-		else
-			NotifyPlayer(oCrafter, "<c=turquoise>Salvage Stack :</c> <c=green>* Success *</c> <c=blue>( d100 : "
-						+ IntToString(iRoll) + " vs " + IntToString(iChance) + " )</c>");
-	}
 
-	string sResrefList; // auto success if no skillcheck required
-	if (!StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 29)) // TCC_Toggle_SalvagingUsesSkillCheck
-		|| GetIsSkillSuccessful(oCrafter, SKILL_SPELLCRAFT, iSalvageDC))
+		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SALVAGE_STACK
+					+ "<c=green>* Success *</c> <c=blue>( d100 : "
+					+ IntToString(iRoll) + " vs " + IntToString(iStackSuccessProb) + " )</c>");
+	}
+	// else the player will get at least any failure-products ->
+
+	string sResrefList;
+	if (bAutoSuccess || GetIsSkillSuccessful(oCrafter, SKILL_SPELLCRAFT, iSalvageDC))
 	{
+		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SALVAGE
+					+ "<c=green>Full Success :</c> Gems and essences were salvaged.");
 		sResrefList = sResrefsSuccess;
 	}
 	else
+	{
+		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SALVAGE
+					+ "<c=blue>Partial Success :</c> Only essences but no gems were salvaged.");
 		sResrefList = sResrefsFailure;
+	}
 
 	DestroyObject(oItem);
 	CreateProducts(sResrefList, oCrafter);

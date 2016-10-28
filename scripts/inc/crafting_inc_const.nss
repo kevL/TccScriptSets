@@ -184,6 +184,9 @@ const string NOTE_SET_ITEM			= "<c=antiquewhite>Set-item :</c> ";
 const string NOTE_SET_PLOT			= "<c=antiquewhite>Plot item :</c> ";
 const string NOTE_SET_LABEL			= "<c=antiquewhite>Give your Property Set a label :</c> ";
 
+const string NOTE_SALVAGE			= "<c=turquoise>Salvage :</c> ";
+const string NOTE_SALVAGE_STACK		= "<c=turquoise>Salvage Stack :</c> ";
+
 // Error codes - string refs
 //const int ERROR_ITEM_NOT_DISTILLABLE					= 174285; // "Distillation failed! This is not a distillable item."
 //const int ERROR_MISSING_REQUIRED_MOLD					= 174286; // "Crafting failed! No mold found."
