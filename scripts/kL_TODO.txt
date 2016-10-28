@@ -1,0 +1,56 @@
+deal with GetDescription() ... in 'gui_tcc_create_set'
+
+do advanced CasterLevel rule
+
+force Set. force an item that is part of a Set to act as part of that Set even if it hasn't got a latent-ip. This is a workaround for an issue if a Set is created, some of the parts are enchanted with latent-ip's (thereby locking them into that Set) but one or more of the subsequent Set-items have too many enchantments already or perhaps the player doesn't have reagents for the next prepared part ... allow player to say "fuck it" and force the remaining item(s) past their preparation stage and to become a full-fledged member of that Set.
+
+replace TCC-material with base-material
+
+call GetSortedReagents() on the REAGENTS list of Crafting.2da -- so that they no longer *have* to be in sorted case-sensitive order.
+
+Set-part preparation: randomize the reagents that may get destroyed -
+TCC config: Value_SetPerReagentDestroyChance
+TCC config: Toggle_SetAlwaysDestroyEssence
+TCC config: Toggle_SetAlwaysDestroyNonessence
+
+TCC config: Toggle_SetPrepRecoversReagents
+
+----
+cft_ess_power1	- Faint Power Essence
+cft_ess_power2	- Weak Power Essence
+cft_ess_power3	- Glowing Power Essence
+cft_ess_power4	- Radiant Power Essence
+
+cft_gem_13		- Rogue Stone
+cft_gem_14		- Beljuril
+cft_gem_15		- King's Tear
+nw_it_gem005	- Diamond
+nw_it_gem009	- Fire Opal
+nw_it_gem008	- Sapphire
+nw_it_gem002	- Fire Agate
+cft_gem_03		- Obsidian
+nw_it_gem010	- Topaz
+nw_it_gem011	- Garnet
+
+base:
+rogue stone + radiant
+
+2 item set:
+beljuril + radiant (cl 19)
+3 item set:
+king's tear + glowing (cl 16)
+4 item set:
+diamond + weak (cl 13)
+
+5 item set:
+fire opal + faint (cl 10)
+6 item set:
+sapphire + faint (cl 10)
+7 item set:
+fire agate + faint (cl 10)
+8 item set:
+obsidian + faint (cl 10)
+9 item set:
+topaz + faint (cl 10)
+10 item set:
+garnet + faint (cl 10)
