@@ -55,7 +55,7 @@ const string TCC_COL_VALUE		= "Value1";
 const string TCC_VAR_MASTERWORK		= "tcc_masterwork";
 const string TCC_VAR_MATERIAL		= "tcc_material";
 
-const string TCC_MASTERWORK_SUF		= "_mast"; // see also "mi_mwk" & "mst_"
+const string TCC_MASTERWORK_SUF		= "_mast"; // see also "_mwk" & "mst_"
 
 const string TCC_BONUS_ARMOR		= "Arm";
 const string TCC_BONUS_RANGED		= "Ran";
@@ -233,7 +233,7 @@ const string VAR_BLACKSMITH 		= "WB_blacksmith";
 const string VAR_MAGICAL			= "WB_magical";
 
 
-// labels for passing variables around
+// labels for passing variables to other scripts
 const string CRAFT_VAR_CONTAINER	= "craft_container";
 const string CRAFT_VAR_CONTAINER_II	= "craft_container_ii";
 const string CRAFT_VAR_CRAFTER		= "craft_crafter";

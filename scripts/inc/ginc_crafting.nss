@@ -69,7 +69,7 @@ void DoDistillation(object oItem, object oCrafter);
 
 // Helper for DoDistillation() -- but also used directly by the mortar & pestle
 // on Fairy Dust and Shadow Reaver Bones.
-void ExecuteDistillation(int iSkillRankReq,
+void ExecuteDistillation(int iRankRQ,
 						 object oItem,
 						 object oCrafter,
 						 string sResrefList);
@@ -114,8 +114,7 @@ void DestroyReagents();
 void CreateProducts(string sResrefList,
 					object oContainer = OBJECT_SELF,
 					int bFullStack = FALSE,
-					int bMasterWork = FALSE,
-					int iBonus = 0);
+					int iBonus = -1);
 
 // Applies bonuses to crafted masterwork oItem.
 void ApplyMasterworkBonus(object oItem, int iBonus);
@@ -534,7 +533,7 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 				TellCraft(". . no latent items");
 				break;
 
-			case 1: // ask to proceed with latent-ip enchanting (if cancelled all Set-vars are erased from _oEnchantable)
+			case 1: // ask to proceed with latent-ip enchanting
 				TellCraft(". . call GuiPrepareLatent() & exit");
 				GuiPrepareLatent(oCrafter, iSpellId);
 				return;
@@ -1610,8 +1609,7 @@ void DestroyReagents()
 void CreateProducts(string sResrefList,
 					object oContainer = OBJECT_SELF,
 					int bFullStack = FALSE,
-					int bMasterWork = FALSE,
-					int iBonus = 0)
+					int iBonus = -1)
 {
 	//TellCraft("CreateProducts() ( " + sResrefList + " )");
 	object oCreate;
@@ -1621,16 +1619,14 @@ void CreateProducts(string sResrefList,
 	while (sResref != "")
 	{
 		//TellCraft(". resref= " + sResref);
-		if (bMasterWork)
+		if (iBonus != -1)
 		{
 			//TellCraft(". masterwork !");
 			oCreate = CreateItemOnObject(sResref + TCC_MASTERWORK_SUF, oContainer);
 			if (!GetIsObjectValid(oCreate))
 			{
 				//TellCraft(". . WARNING : no masterwork resref ( " + sResref + TCC_MASTERWORK_SUF + " )");
-
 				oCreate = CreateItemOnObject(sResref, oContainer);
-				SetLocalInt(oCreate, TCC_VAR_MASTERWORK, TRUE);
 			}
 		}
 		else
@@ -1641,8 +1637,16 @@ void CreateProducts(string sResrefList,
 
 		if (GetIsObjectValid(oCreate))
 		{
-			if (iBonus)
-				ApplyMasterworkBonus(oCreate, iBonus);
+			if (iBonus != -1)
+			{
+				SetLocalInt(oCreate, TCC_VAR_MASTERWORK, TRUE);	// TODO: remove +1 Attack bonus from .Uti's
+																// ie. Allow masterwork items to have no attack bonus
+				if (iBonus > 0)									// but are still eligible for extra enchanted IPs.
+					ApplyMasterworkBonus(oCreate, iBonus);		// TODO: how does this play with damage bonuses from base-materials
+			}
+
+			// TODO: Set the base-material of a crafted item per the ingot-type used when forging it.
+			// TODO: in fact just get rid of the masterwork .Uti's and handle it w/ script ...
 
 			SetIdentified(oCreate, TRUE);
 
@@ -2757,15 +2761,15 @@ void DoMundaneCrafting(object oCrafter)
 		return;
 	}
 
-	int iSkillRankReq	= StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_SKILL_LEVEL, _iRecipeId));
-	int iSkill			= StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_CRAFT_SKILL, _iRecipeId));
-	int iSkillRankPC	= GetSkillRank(iSkill, oCrafter);
+	int iRankRQ		= StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_SKILL_LEVEL, _iRecipeId));
+	int iSkillId	= StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_CRAFT_SKILL, _iRecipeId));
+	int iRankPC		= GetSkillRank(iSkillId, oCrafter);
 
-	if (iSkillRankPC < iSkillRankReq)
+	if (iRankPC < iRankRQ)
 	{
 //		int iError;
 		string sError;
-		switch (iSkill)
+		switch (iSkillId)
 		{
 			default:
 			case SKILL_CRAFT_WEAPON:
@@ -2791,22 +2795,20 @@ void DoMundaneCrafting(object oCrafter)
 	string sInfo = "The item has been crafted.";
 
 	string sResrefList = Get2DAString(CRAFTING_2DA, COL_CRAFTING_OUTPUT, _iRecipeId);
-	int bMasterwork = FALSE;
-	int iBonus = 0;
+	int iBonus = -1;
 
 	if (Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 26) != "0") // TCC_Toggle_CreateMasterworkItems
 	{
 		int iTCC_MasterworkSkillModifier = StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 31)); // TCC_Value_MasterworkSkillModifier
-		if (iTCC_MasterworkSkillModifier + iSkillRankReq <= iSkillRankPC)
+		if (iTCC_MasterworkSkillModifier + iRankRQ <= iRankPC)
 		{
 			sInfo = "You have created a masterpiece !";
 
-			bMasterwork = TRUE;
-			iBonus = (iSkillRankPC - iSkillRankReq) / iTCC_MasterworkSkillModifier;
+			iBonus = (iRankPC - iRankRQ) / iTCC_MasterworkSkillModifier;
 			if (iBonus < 0) iBonus = 0; // safety.
 		}
 	}
-	CreateProducts(sResrefList, OBJECT_SELF, TRUE, bMasterwork, iBonus);
+	CreateProducts(sResrefList, OBJECT_SELF, TRUE, iBonus);
 
 //	NotifyPlayer(oCrafter, OK_CRAFTING_SUCCESS);
 	NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_SUCCESS + sInfo);
@@ -2842,8 +2844,8 @@ void DoAlchemyCrafting(object oCrafter)
 		return;
 	}
 
-	int iSkillRankReq = StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_SKILL_LEVEL, _iRecipeId));
-	if (GetSkillRank(SKILL_CRAFT_ALCHEMY, oCrafter) < iSkillRankReq)
+	int iRankRQ = StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_SKILL_LEVEL, _iRecipeId));
+	if (GetSkillRank(SKILL_CRAFT_ALCHEMY, oCrafter) < iRankRQ)
 	{
 //		NotifyPlayer(oCrafter, ERROR_INSUFFICIENT_CRAFT_ALCHEMY_SKILL);
 		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
@@ -2888,9 +2890,9 @@ void DoDistillation(object oItem, object oCrafter)
 	if (_iRecipeId != -1)
 	{
 		//TellCraft("Distilling ...");
-		int iSkillRankReq = StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_SKILL_LEVEL, _iRecipeId));
+		int iRankRQ = StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_SKILL_LEVEL, _iRecipeId));
 		string sResrefList = Get2DAString(CRAFTING_2DA, COL_CRAFTING_OUTPUT, _iRecipeId);
-		ExecuteDistillation(iSkillRankReq, oItem, oCrafter, sResrefList);
+		ExecuteDistillation(iRankRQ, oItem, oCrafter, sResrefList);
 	}
 	else if (!StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 27))) // TCC_Toggle_AllowItemSalvaging
 	{
@@ -2922,9 +2924,9 @@ void DoDistillation(object oItem, object oCrafter)
 
 // Helper for DoDistillation() -- but also used directly by the mortar & pestle
 // on Fairy Dust and Shadow Reaver Bones.
-void ExecuteDistillation(int iSkillRankReq, object oItem, object oCrafter, string sResrefList)
+void ExecuteDistillation(int iRankRQ, object oItem, object oCrafter, string sResrefList)
 {
-	if (GetSkillRank(SKILL_CRAFT_ALCHEMY, oCrafter) < iSkillRankReq)
+	if (GetSkillRank(SKILL_CRAFT_ALCHEMY, oCrafter) < iRankRQ)
 	{
 //		NotifyPlayer(oCrafter, ERROR_INSUFFICIENT_CRAFT_ALCHEMY_SKILL);
 		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
@@ -2961,7 +2963,7 @@ void ExecuteSalvage(object oItem, object oCrafter)
 	int iSalvageId, iSalvageGrade, iScanDC;
 
 	int iSalvageDC = 1;
-	int iSkillRankReq = 9999;
+	int iRankRQ = 9999;
 
 	string sResrefsFailure = "";
 	string sResrefsSuccess = "";
@@ -2980,8 +2982,8 @@ void ExecuteSalvage(object oItem, object oCrafter)
 			if (iScanDC > iSalvageDC)
 				iSalvageDC = iScanDC;
 
-			if (iScanDC < iSkillRankReq)						// 'iSkillRankReq' will be the lowest DC
-				iSkillRankReq = iScanDC;
+			if (iScanDC < iRankRQ)								// 'iRankRQ' will be the lowest DC
+				iRankRQ = iScanDC;
 
 			if (sResrefsFailure != "")							// assemble each ip's salvage-product
 				sResrefsFailure += ",";
@@ -3003,7 +3005,7 @@ void ExecuteSalvage(object oItem, object oCrafter)
 		return;
 	}
 
-	if (iSkillRankReq - 5 > GetSkillRank(SKILL_SPELLCRAFT, oCrafter)// check required skill level
+	if (iRankRQ - 5 > GetSkillRank(SKILL_SPELLCRAFT, oCrafter)// check required skill level
 		&& StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 28))) // TCC_Toggle_SalvagingRequiresMinSkill
 	{
 		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
