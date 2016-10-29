@@ -2915,7 +2915,7 @@ void DoDistillation(object oItem, object oCrafter)
 
 			case TCC_TYPE_NONE:
 			case TCC_TYPE_OTHER:
-				NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
+				NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SALVAGE + NOTE_RESULT_FAIL
 							+ "You cannot salvage any materials.");
 		}
 	}
