@@ -415,6 +415,8 @@ int    _iRecipeId;			// the Crafting.2da index of the final recipe
 int    _iRecipeIdFirst;		// the first possible recipe-id for the trigger
 int    _iRecipeIdLast;		// the last possible recipe-id for the trigger
 
+int    _iRecipeId_ii;		// the recipe-id if Imbue Item finds only 1 valid recipe
+
 
 // ____________________________________________________________________________
 //  ----------------------------------------------------------------------------
@@ -446,7 +448,8 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 //			+ "\n. . _sRecipeList= "		+ _sRecipeList
 //			+ "\n. . _iRecipeId= "			+ IntToString(_iRecipeId)
 //			+ "\n. . _iRecipeIdFirst= "		+ IntToString(_iRecipeIdFirst)
-//			+ "\n. . _iRecipeIdLast= "		+ IntToString(_iRecipeIdLast));
+//			+ "\n. . _iRecipeIdLast= "		+ IntToString(_iRecipeIdLast)
+//			+ "\n. . _iRecipeId_ii= "		+ IntToString(_iRecipeId_ii));
 
 	if (!GetIsObjectValid(GetFirstItemInInventory()))
 	{
@@ -486,9 +489,14 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 
 	_sTriggerId = IntToString(iSpellId);
 
+	_iRecipeId_ii = -2; // init.
+
 	if (iSpellId == SPELL_IMBUE_ITEM)
 	{
-		// if no matches or only one match, bypass trigger-spell GUI and let regular code handle it.
+		// if no matches or only one match then bypass SetTriggerSpell() GUI
+		// - if no matches let regular code notify player and Exit
+		// - if only one match set the script-var '_iRecipeId_ii' in
+		//   DisplayRecipeMatches() and assign it to '_iRecipeId'
 		GetRecipeMatches();
 		TellCraft(". . IMBUE_ITEM : _sRecipeList= " + _sRecipeList);
 
@@ -497,19 +505,37 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 //			GetRecipeMatchesCropped();
 //			TellCraft(". . . cropped _sRecipeList= " + _sRecipeList);
 
-			if (DisplayRecipeMatches(oCrafter) > 0)
+			if (DisplayRecipeMatches(oCrafter) > 1)
 			{
 				TellCraft(". . . . call GuiTriggerSpell() & exit");
 				GuiTriggerSpell(oCrafter);
 				return;
 			}
-			else TellCraft(". . . . only 1 trigger for Imbue_Item & continue");
+			else
+			{
+				// '_iRecipeId_ii' was set by DisplayRecipeMatches()
+				// assign it to '_iRecipeId' below
+				TellCraft(". . . . only 1 trigger for Imbue_Item : proceed with recipe");
+			}
 		}
-		else TellCraft(". . . no trigger for Imbue_Item & continue");
+		else
+		{
+			_iRecipeId_ii = -1;
+			TellCraft(". . . no trigger for Imbue_Item : notify player & exit");
+		}
 	}
 
-
-	GetRecipeMatchSorted();
+	switch (_iRecipeId_ii)
+	{
+		case -2:
+			GetRecipeMatchSorted(); // for regular SpellId.
+			break;
+		case -1:
+			_iRecipeId = -1; // for Imbue_Item w/ no matches.
+			break;
+		default:
+			_iRecipeId = _iRecipeId_ii; // for Imbue_Item w/ only one match.
+	}
 	TellCraft(". _iRecipeId= " + IntToString(_iRecipeId));
 
 	if (_iRecipeId == -1 || StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_DISABLED, _iRecipeId)))
@@ -1365,9 +1391,9 @@ void GetRecipeMatchesCropped()
 // triggers for SPELL_IMBUE_ITEM are.
 // @param oCrafter	- the character to send the parsed info to
 // @return			- how to proceed:
-//					   1 - (or greater) show triggerspell candidates
-//					   0 - don't show candidates, only one match, proceed with standard recipe
-//					  -1 - no match found, abort recipe
+//						2+ - show triggerspell candidates
+//						1  - don't show candidates, only one match, proceed with standard recipe
+//						0  - no match found, abort recipe
 // @note '_sRecipeList' will be in format: "234,34,0,2343" eg. -- no trailing
 // delimiter, keeps things compatible with 'x0_i0_stringlib'.
 int DisplayRecipeMatches(object oCrafter)
@@ -1418,7 +1444,7 @@ int DisplayRecipeMatches(object oCrafter)
 	string sInfoSpells, sResultLabel, sResultTest, sSpellId, sSpellLabel;
 	int iPropType, iRecipeId;
 
-	int iProceed = -1;
+	int iProceed = 0;
 
 	struct tokenizer rTok2 = GetStringTokenizer(sResultList, ENCODED_IP_LIST_DELIMITER);
 	while (CheckMoreTokens(rTok2))
@@ -1469,9 +1495,9 @@ int DisplayRecipeMatches(object oCrafter)
 	string sInfo;
 	switch (iProceed)
 	{
-		case -1: return -1; // 'iProceed' will NOT be "-1" as along as '_sRecipeList' is NOT blank.
+		case 0: return 0; // 'iProceed' will NOT be "0" as along as '_sRecipeList' is NOT blank.
 
-		case 0:
+		case 1:
 			sInfo = NOTE_CRAFT;
 			break;
 		default:
