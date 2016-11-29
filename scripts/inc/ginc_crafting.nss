@@ -415,8 +415,6 @@ int    _iRecipeId;			// the Crafting.2da index of the final recipe
 int    _iRecipeIdFirst;		// the first possible recipe-id for the trigger
 int    _iRecipeIdLast;		// the last possible recipe-id for the trigger
 
-int    _iRecipeId_ii;		// the recipe-id if Imbue Item finds only 1 valid recipe
-
 
 // ____________________________________________________________________________
 //  ----------------------------------------------------------------------------
@@ -448,8 +446,7 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 //			+ "\n. . _sRecipeList= "		+ _sRecipeList
 //			+ "\n. . _iRecipeId= "			+ IntToString(_iRecipeId)
 //			+ "\n. . _iRecipeIdFirst= "		+ IntToString(_iRecipeIdFirst)
-//			+ "\n. . _iRecipeIdLast= "		+ IntToString(_iRecipeIdLast)
-//			+ "\n. . _iRecipeId_ii= "		+ IntToString(_iRecipeId_ii));
+//			+ "\n. . _iRecipeIdLast= "		+ IntToString(_iRecipeIdLast));
 
 	if (!GetIsObjectValid(GetFirstItemInInventory()))
 	{
@@ -489,16 +486,13 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 
 	_sTriggerId = IntToString(iSpellId);
 
-	_iRecipeId_ii = -2; // init.
-
 	if (iSpellId == SPELL_IMBUE_ITEM)
 	{
 		// if no matches or only one match then bypass SetTriggerSpell() GUI
 		// - if no matches let regular code notify player and Exit
-		// - if only one match set the script-var '_iRecipeId_ii' in
-		//   DisplayRecipeMatches() and assign it to '_iRecipeId'
+		// - if only one match set '_iRecipeId' in DisplayRecipeMatches()
 		GetRecipeMatches();
-		TellCraft(". . IMBUE_ITEM : _sRecipeList= " + _sRecipeList);
+		TellCraft(". . IMBUE_ITEM _sRecipeList= " + _sRecipeList);
 
 		if (_sRecipeList != "")
 		{
@@ -511,31 +505,18 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 				GuiTriggerSpell(oCrafter);
 				return;
 			}
-			else
-			{
-				// '_iRecipeId_ii' was set by DisplayRecipeMatches()
-				// assign it to '_iRecipeId' below
+			else // '_iRecipeId' was set by DisplayRecipeMatches()
 				TellCraft(". . . . only 1 trigger for Imbue_Item : proceed with recipe");
-			}
 		}
 		else
 		{
-			_iRecipeId_ii = -1;
+			_iRecipeId = -1;
 			TellCraft(". . . no trigger for Imbue_Item : notify player & exit");
 		}
 	}
+	else // is NOT Imbue_Item
+		GetRecipeMatchSorted();
 
-	switch (_iRecipeId_ii)
-	{
-		case -2:
-			GetRecipeMatchSorted(); // for regular SpellId.
-			break;
-		case -1:
-			_iRecipeId = -1; // for Imbue_Item w/ no matches.
-			break;
-		default:
-			_iRecipeId = _iRecipeId_ii; // for Imbue_Item w/ only one match.
-	}
 	TellCraft(". _iRecipeId= " + IntToString(_iRecipeId));
 
 	if (_iRecipeId == -1 || StringToInt(Get2DAString(CRAFTING_2DA, COL_CRAFTING_DISABLED, _iRecipeId)))
@@ -1417,7 +1398,7 @@ int DisplayRecipeMatches(object oCrafter)
 
 	// First, get all possible results from '_sRecipeList'.
 	// - store each uniquely in ResultList
-	string sResult, sResultList;
+	string sResult, sResultsList;
 
 	struct tokenizer rTok = GetStringTokenizer(_sRecipeList, REAGENT_LIST_DELIMITER);
 	while (CheckMoreTokens(rTok))
@@ -1427,16 +1408,16 @@ int DisplayRecipeMatches(object oCrafter)
 		sResult = Get2DAString(CRAFTING_2DA, sCol, StringToInt(GetCurrentToken(rTok)));
 		if (sResult != "") // could be a 1-item Set Creation ...
 		{
-			if (FindListElementIndex(sResultList, sResult, ENCODED_IP_LIST_DELIMITER) == -1)
+			if (FindListElementIndex(sResultsList, sResult, ENCODED_IP_LIST_DELIMITER) == -1)
 			{
-				if (sResultList != "") sResultList += ENCODED_IP_LIST_DELIMITER;
-				sResultList += sResult;
+				if (sResultsList != "") sResultsList += ENCODED_IP_LIST_DELIMITER;
+				sResultsList += sResult;
 			}
 		}
 		else // 1-item Set Creation
 		{
-			if (sResultList != "") sResultList += ENCODED_IP_LIST_DELIMITER;
-			sResultList += TCC_SET_CREATION; // ... there will be only 1.
+			if (sResultsList != "") sResultsList += ENCODED_IP_LIST_DELIMITER;
+			sResultsList += TCC_SET_CREATION; // ... there will be only 1.
 		}
 	}
 
@@ -1446,7 +1427,7 @@ int DisplayRecipeMatches(object oCrafter)
 
 	int iProceed = 0;
 
-	struct tokenizer rTok2 = GetStringTokenizer(sResultList, ENCODED_IP_LIST_DELIMITER);
+	struct tokenizer rTok2 = GetStringTokenizer(sResultsList, ENCODED_IP_LIST_DELIMITER);
 	while (CheckMoreTokens(rTok2))
 	{
 		++iProceed;
@@ -1498,6 +1479,7 @@ int DisplayRecipeMatches(object oCrafter)
 		case 0: return 0; // 'iProceed' will NOT be "0" as along as '_sRecipeList' is NOT blank.
 
 		case 1:
+			_iRecipeId = iRecipeId;
 			sInfo = NOTE_CRAFT;
 			break;
 		default:
@@ -2434,7 +2416,7 @@ int ClearSetParts(object oCrafter)
 			iMalachite += GetItemStackSize(oItem);
 		else if (GetLocalInt(oItem, TCC_VAR_SET_GROUP))
 		{
-			++iSetParts; // Set-items cannot be stackable, eg. not ranged-ammo
+			++iSetParts; // Set-items shall not be stackable, eg. not ranged-ammo
 			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SET_ITEM
 						+ GetName(oItem) + " (" + GetTag(oItem) + " )");
 		}

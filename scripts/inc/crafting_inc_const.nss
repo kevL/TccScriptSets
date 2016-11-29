@@ -74,7 +74,7 @@ const string TCC_VAR_SET_GROUP		= "tcc_setgroup";
 const string TCC_VAR_SET_PARTS		= "tcc_setparts";
 const string TCC_VAR_SET_IP			= "tcc_setlatentip";
 
-const string TCC_SET_CREATION		= "Set Creation";
+const string TCC_SET_CREATION		= "SetCreate";
 
 //const string TCC_SET_TAG			= "tcc_setitem";
 
