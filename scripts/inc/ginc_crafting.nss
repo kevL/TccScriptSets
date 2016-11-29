@@ -1492,7 +1492,7 @@ void GetTriggerRange()
 {
 	//TellCraft("GetTriggerRange() _sTriggerId= " + _sTriggerId);
 
-	if (_sTriggerId != "1081") // note: ImbueItem acts as a trigger for any magical recipe.
+	if (_sTriggerId != SPELL_IMBUE_ITEM_ST) // note: ImbueItem acts as a trigger for any magical recipe.
 	{
 		int bFound = FALSE;
 

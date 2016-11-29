@@ -25,9 +25,9 @@ void main(string sSpellId)
 
 		object oCrafter = GetControlledCharacter(OBJECT_SELF);
 
-		if (sSpellId == "1081") // Imbue_Item is NOT allowed here.
+		if (sSpellId == SPELL_IMBUE_ITEM_ST) // Imbue_Item is NOT allowed here.
 			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_ERROR
-						+ "Spell ID <b>1081</b> ( Imbue Item ) is NOT allowed. Try again.");
+						+ "Spell ID <b>" + SPELL_IMBUE_ITEM_ST + "</b> ( Imbue Item ) is NOT allowed. Try again.");
 		else
 		{
 			SetLocalObject(oModule, CRAFT_VAR_CRAFTER, oCrafter);

@@ -243,3 +243,6 @@ const string CRAFT_VAR_CRAFTER		= "craft_crafter";
 const string CRAFT_VAR_SPELLID		= "craft_spellid";
 const string CRAFT_VAR_SPELLID_II	= "craft_spellid_ii";
 const string CRAFT_VAR_LABELITEM	= "craft_item";
+
+
+const string SPELL_IMBUE_ITEM_ST = "1081";
