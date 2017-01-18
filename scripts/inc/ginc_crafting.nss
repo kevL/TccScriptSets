@@ -79,7 +79,7 @@ void ExecuteDistillation(int iRankRQ,
 // functions for general crafting:
 
 // Gets the row of Crafting.2da that matches input-variables.
-void GetRecipeMatchSorted();
+void GetRecipeMatchSortReagents();
 // Gets all reagents sorted into an alphabetical list (case-sensitive).
 void GetReagentTags();
 // Gets a list of tags for any stacksize of oItem.
@@ -104,7 +104,7 @@ int isSpellId(string sTriggerId);
 // Finds the first match in Crafting.2da for a sorted string of reagent-tags.
 void GetRecipeForReagents();
 // Checks if the type of oItem matches permitted values in Crafting.2da TAGS.
-int isTypeMatch(string sTypesValid);
+int isTypeTaggedType(string sTypesValid);
 // Gets the TCC-type of oItem.
 int GetTccType(object oItem);
 
@@ -158,6 +158,8 @@ int GetPropSlotsUsed(object oItem);
 int isIgnoredIp(itemproperty ip);
 // Checks if adding an ip should ignore subtype.
 int isIgnoredSubtype(itemproperty ip);
+// Checks for Attack-bonus on Masterwork weapons.
+int hasMasterworkAttackBonus(object oItem);
 
 
 // -----------------------------------------------------------------------------
@@ -515,7 +517,7 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 		}
 	}
 	else // is NOT Imbue_Item
-		GetRecipeMatchSorted();
+		GetRecipeMatchSortReagents();
 
 	TellCraft(". _iRecipeId= " + IntToString(_iRecipeId));
 
@@ -552,7 +554,7 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 		}
 	}
 
-// +++ check additional criteria ->
+// +++ check additional criteria +++
 
 	// check if caster is of sufficient level
 	int iCasterLevel = GetCasterLevel(oCrafter);
@@ -707,34 +709,56 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 
 
 		// collect the required recipe information
-		string sEncodedIp = Get2DAString(CRAFTING_2DA, COL_CRAFTING_EFFECTS, _iRecipeId);
-		TellCraft(". . sEncodedIp= " + sEncodedIp);
+		string sEncodedIps = Get2DAString(CRAFTING_2DA, COL_CRAFTING_EFFECTS, _iRecipeId);
+		TellCraft(". . sEncodedIps= " + sEncodedIps);
 
-		int iPropType = GetIntParam(sEncodedIp, 0, REAGENT_LIST_DELIMITER);
-		TellCraft(". . iPropType= " + IntToString(iPropType));
-		itemproperty ipEnchant = IPGetItemPropertyByID(iPropType,
-													   GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
-													   GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
-													   GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
-													   GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+		string sEncodedIpFirst, sEncodedIp;
+		int iPropTypeFirst, iPropType;
 
-		// do a validity check although it's probably not thorough
-		if (!GetIsItemPropertyValid(ipEnchant))
+		itemproperty ipEnchant;
+
+		int bFirst = TRUE;
+
+		// perform checks on each encoded-ip in the recipe
+		struct tokenizer rTok = GetStringTokenizer(sEncodedIps, ENCODED_IP_LIST_DELIMITER);
+		while (CheckMoreTokens(rTok))
 		{
-			TellCraft(". . . ERROR : DoMagicCrafting() ipEnchant is invalid ( " + sEncodedIp
-					+ " ) for _iRecipeId= " + IntToString(_iRecipeId));
-			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_ERROR
-						+ "The itemproperty in Crafting.2da is malformed for its recipe. Sry bout that . . .");
-			return;
-		}
+			rTok = AdvanceTokenizer(rTok);
+			sEncodedIp = GetCurrentToken(rTok);
 
-		// is the ip-type legal for _oEnchantable
-		if (!GetIsLegalItemProp(GetBaseItemType(_oEnchantable), iPropType))
-		{
-//			NotifyPlayer(oCrafter, ERROR_TARGET_NOT_LEGAL_FOR_EFFECT);
-			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
-						+ "Not a valid enchantment for that particular type of item.");
-			return;
+			iPropType = GetIntParam(sEncodedIp, 0, REAGENT_LIST_DELIMITER);
+			ipEnchant = IPGetItemPropertyByID(iPropType,
+											  GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
+											  GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
+											  GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
+											  GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+			if (bFirst)
+			{
+				bFirst = FALSE;
+				sEncodedIpFirst = sEncodedIp;
+				iPropTypeFirst  = iPropType;
+			}
+
+			TellCraft(". . . iPropType= " + IntToString(iPropType));
+
+			// do a validity check although it's probably not thorough
+			if (!GetIsItemPropertyValid(ipEnchant))
+			{
+				TellCraft(". . . . ERROR : DoMagicCrafting() ipEnchant is invalid ( " + sEncodedIp
+						+ " ) for _iRecipeId= " + IntToString(_iRecipeId));
+				NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_ERROR
+							+ "The itemproperty in Crafting.2da is malformed for its recipe. Sry bout that ...");
+				return;
+			}
+
+			// check if the ip-type is legal for _oEnchantable's base-type
+			if (!GetIsLegalItemProp(GetBaseItemType(_oEnchantable), iPropType))
+			{
+//				NotifyPlayer(oCrafter, ERROR_TARGET_NOT_LEGAL_FOR_EFFECT);
+				NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
+							+ "Not a valid enchantment for that particular type of item.");
+				return;
+			}
 		}
 
 		// check for properties that arrogate this one
@@ -746,87 +770,193 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 			return;
 		}
 
+/*		// reset 'sEncodedIp' 'iPropType' 'ipEnchant' to first encoded-ip for now ... TODO: don't panic.
+		rTok = GetStringTokenizer(sEncodedIps, ENCODED_IP_LIST_DELIMITER);
+		rTok = AdvanceTokenizer(rTok);
+		sEncodedIp = GetCurrentToken(rTok); // NOTE: Only 'sEncodedIp' might be needed from here for a latent-ip.
+
+//		iPropType = GetIntParam(sEncodedIp, 0);
+//		ipEnchant = IPGetItemPropertyByID(iPropType,
+//										  GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
+//										  GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
+//										  GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
+//										  GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+*/
 		// check for available slots on item for enchants;
 		// if good, Do ENCHANTMENTS.
 		if (StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 5))) // TCC_Toggle_LimitNumberOfProps
 		{
 // Check Upgrade ->
 			// look for an existing ip being replaced or upgraded
-			// NOTE: This is not necessarily an upgarde; an ip can be downgraded
-			// or exactly the same ip can even be applied.
+			// NOTE: This is not necessarily an upgrade; an ip can be downgraded
+			// or exactly the same ip can be applied over an existing ip.
 			int bUpgrade = FALSE;
-			// check if an Enhancement bonus is equal or better than existing Attack bonuses
-			if (iTccType == TCC_TYPE_MELEE) // note: Not sure what else should do this ->
-				bUpgrade = ReplaceAttackBonus(_oEnchantable,
-											  iPropType,
-											  GetItemPropertyCostTableValue(ipEnchant),
-											  GetItemPropertySubType(ipEnchant));
 
-			if (!bUpgrade)
-				bUpgrade = isIpUpgrade(_oEnchantable, ipEnchant);
+			// check if all encoded-ips are upgrades
+			TellCraft(". . . check all encoded-ips for Upgrade");
+			rTok = GetStringTokenizer(sEncodedIps, ENCODED_IP_LIST_DELIMITER); // reset Tokenizer.
+			while (CheckMoreTokens(rTok))
+			{
+				bUpgrade = FALSE;
 
+				rTok = AdvanceTokenizer(rTok);
+				sEncodedIp = GetCurrentToken(rTok);
+
+				iPropType = GetIntParam(sEncodedIp, 0);
+				ipEnchant = IPGetItemPropertyByID(iPropType,
+												  GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
+												  GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
+												  GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
+												  GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+
+				TellCraft(". . . . check iPropType= " + IntToString(iPropType));
+
+				// check if an Enhancement bonus is equal or better than existing Attack-bonuses
+				if (iTccType == TCC_TYPE_MELEE) // note: Not sure what other TCC-types should do this ->
+					bUpgrade = ReplaceAttackBonus(_oEnchantable,
+												  iPropType,
+												  GetItemPropertyCostTableValue(ipEnchant),
+												  GetItemPropertySubType(ipEnchant));
+
+				if (!bUpgrade)
+					bUpgrade = isIpUpgrade(_oEnchantable, ipEnchant);
+
+				if (!bUpgrade) // fail.
+					break;
+			}
 			TellCraft(". . . bUpgrade= " + IntToString(bUpgrade));
+			// NOTE: Only the first encoded-ip will be checked for an available
+			//		 slot if they aren't all upgrades (or all free).
 
 
+/*			// reset 'sEncodedIp' 'iPropType' 'ipEnchant' to first encoded-ip for now ... TODO: don't panic.
+			rTok = GetStringTokenizer(sEncodedIps, ENCODED_IP_LIST_DELIMITER);
+			rTok = AdvanceTokenizer(rTok);
+			sEncodedIp = GetCurrentToken(rTok); // NOTE: Only 'sEncodedIp' might be needed from here for a latent-ip.
+
+//			iPropType = GetIntParam(sEncodedIp, 0);
+//			ipEnchant = IPGetItemPropertyByID(iPropType,
+//											  GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
+//											  GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
+//											  GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
+//											  GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+*/
 			if (!bUpgrade)
 			{
 // Check FreeProp ->
-				// check if ip to be added is free
-				int bTCC_UseVariableSlotCosts	= StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 34)); // TCC_Toggle_UseVariableSlotCosts
-				int bTCC_SetPropsAreFree		= StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 25)); // TCC_Toggle_SetPropsAreFree
-
 				int bTCC_LimitationPropsAreFree	= StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 22)); // TCC_Toggle_LimitationPropsAreFree
 				int bTCC_LightPropsAreFree		= StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 23)); // TCC_Toggle_LightPropsAreFree
 				int bTCC_VFXPropsAreFree		= StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 24)); // TCC_Toggle_VFXPropsAreFree
+				int bTCC_SetPropsAreFree		= StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 25)); // TCC_Toggle_SetPropsAreFree
 
+				int bTCC_UseVariableSlotCosts	= StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 34)); // TCC_Toggle_UseVariableSlotCosts
+
+
+				// check if ip to be added is free
 				int bFreeProp = FALSE;
-				if (bTCC_UseVariableSlotCosts
-					&& !StringToInt(Get2DAString(ITEM_PROP_DEF_2DA, COL_ITEM_PROP_DEF_SLOTS, iPropType)))
+
+				if (bTCC_SetPropsAreFree && GetLocalInt(_oEnchantable, TCC_VAR_SET_PREP_ITEM))
 				{
+					TellCraft(". . . is latent-ip : free");
 					bFreeProp = TRUE;
 				}
-				else if (bTCC_SetPropsAreFree && GetLocalInt(_oEnchantable, TCC_VAR_SET_PREP_ITEM))
-					bFreeProp = TRUE;
 				else
 				{
-					switch (iPropType)
+					// check if all encoded-ips are free
+					TellCraft(". . . check all encoded-ips for Free");
+					rTok = GetStringTokenizer(sEncodedIps, ENCODED_IP_LIST_DELIMITER); // reset Tokenizer.
+					while (CheckMoreTokens(rTok))
 					{
-						case ITEM_PROPERTY_USE_LIMITATION_CLASS:
-						case ITEM_PROPERTY_USE_LIMITATION_RACIAL_TYPE:
-						case ITEM_PROPERTY_USE_LIMITATION_ALIGNMENT_GROUP:
-						case ITEM_PROPERTY_USE_LIMITATION_SPECIFIC_ALIGNMENT:
-							if (bTCC_LimitationPropsAreFree)
-								bFreeProp = TRUE;
-							break;
+						bFreeProp = FALSE;
 
-						case ITEM_PROPERTY_LIGHT:
-							if (bTCC_LightPropsAreFree)
-								bFreeProp = TRUE;
-							break;
+						rTok = AdvanceTokenizer(rTok);
+						sEncodedIp = GetCurrentToken(rTok);
 
-						case ITEM_PROPERTY_VISUALEFFECT:
-							if (bTCC_VFXPropsAreFree)
-								bFreeProp = TRUE;
+						iPropType = GetIntParam(sEncodedIp, 0);
+//						ipEnchant = IPGetItemPropertyByID(iPropType,
+//														  GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
+//														  GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
+//														  GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
+//														  GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+
+						TellCraft(". . . . check iPropType= " + IntToString(iPropType));
+
+						if (bTCC_UseVariableSlotCosts
+							&& !StringToInt(Get2DAString(ITEM_PROP_DEF_2DA, COL_ITEM_PROP_DEF_SLOTS, iPropType)))
+						{
+							bFreeProp = TRUE;
+						}
+
+						if (!bFreeProp)
+						{
+							switch (iPropType)
+							{
+								case ITEM_PROPERTY_USE_LIMITATION_CLASS:
+								case ITEM_PROPERTY_USE_LIMITATION_RACIAL_TYPE:
+								case ITEM_PROPERTY_USE_LIMITATION_ALIGNMENT_GROUP:
+								case ITEM_PROPERTY_USE_LIMITATION_SPECIFIC_ALIGNMENT:
+									if (bTCC_LimitationPropsAreFree)
+										bFreeProp = TRUE;
+									break;
+
+								case ITEM_PROPERTY_LIGHT:
+									if (bTCC_LightPropsAreFree)
+										bFreeProp = TRUE;
+									break;
+
+								case ITEM_PROPERTY_VISUALEFFECT:
+									if (bTCC_VFXPropsAreFree)
+										bFreeProp = TRUE;
+							}
+						}
+
+						if (!bFreeProp) // fail.
+							break;
 					}
 				}
 				TellCraft(". . . bFreeProp= " + IntToString(bFreeProp));
+				// NOTE: Only the first encoded-ip will be checked for an
+				//		 available slot if they aren't all free.
 
 
+/*				// reset 'sEncodedIp' 'iPropType' 'ipEnchant' to first encoded-ip for now ... TODO: don't panic.
+				rTok = GetStringTokenizer(sEncodedIps, ENCODED_IP_LIST_DELIMITER);
+				rTok = AdvanceTokenizer(rTok);
+				sEncodedIp = GetCurrentToken(rTok); // NOTE: 'sEncodedIp' might be needed from here for a latent-ip.
+
+				iPropType = GetIntParam(sEncodedIp, 0); // NOTE: 'iPropType' will be needed below if variable slot-costs are enabled.
+//				ipEnchant = IPGetItemPropertyByID(iPropType,
+//												  GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
+//												  GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
+//												  GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
+//												  GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+*/
 				if (!bFreeProp)
 				{
 // Tally Bonuses & Discounts ->
-					int iBonus = 0; // NOTE: Bonus & Discount amount to the same thing.
-					int iDiscount = 0;
+					int iBonus = 0;		// NOTE: Bonus & Discount amount to the same thing.
+					int iDiscount = 0;	// Keeping them separate is to help with mental bookkeeping.
 
 // masterwork ->
-					// grant a bonus if the item is masterwork
-					int iMasterworkBonus = StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 6)); // TCC_Value_GrantMasterworkBonusSlots
-					if (iMasterworkBonus
-						&& (GetLocalInt(_oEnchantable, TCC_VAR_MASTERWORK)
-							|| GetStringRight(GetTag(_oEnchantable), 5) == TCC_MASTERWORK_SUF)) // see also "mi_mwk" & "mst_"
+					// grant a bonus if the item is Masterwork
+					if (GetLocalInt(_oEnchantable, TCC_VAR_MASTERWORK)
+						|| GetStringRight(GetTag(_oEnchantable), 5) == TCC_MASTERWORK_SUF) // see also "mi_mwk" & "mst_"
 					{
-						iBonus += iMasterworkBonus;
-						TellCraft(". . . . iMasterworkBonus= " + IntToString(iBonus));
+						TellCraft(". . . is Masterwork");
+
+						int iMasterworkBonus = StringToInt(Get2DAString(TCC_CONFIG_2da, TCC_COL_VALUE, 6)); // TCC_Value_GrantMasterworkBonusSlots
+						if (iMasterworkBonus)
+						{
+							iBonus += iMasterworkBonus;
+							TellCraft(". . . . iMasterworkBonus= " + IntToString(iMasterworkBonus) + " iBonus= " + IntToString(iBonus));
+						}
+
+						// grant a discount for Masterwork weapons with an Attack-bonus ip
+						if (hasMasterworkAttackBonus(_oEnchantable)) // NOTE: There is no Tcc_Config.2da option for this.
+						{
+							iDiscount += 1;
+							TellCraft(". . . . Masterwork weapon with Attack bonus - iDiscount= " + IntToString(iDiscount));
+						}
 					}
 
 // material ->
@@ -905,8 +1035,8 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 					}
 
 // limitation ->
-					int iLimitationSlots = 0;
 					int iLimitationProps = 0;
+					int iLimitationSlots = 0;
 
 					int iQty;
 					int iLimitationType;
@@ -966,10 +1096,16 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 // Count Extant Props ->
 					// get quantity of existing ip's
 					int iPropCount;
-					if (bTCC_UseVariableSlotCosts)
-						iPropCount = GetCostSlotsUsed(_oEnchantable);
-					else
+					if (!bTCC_UseVariableSlotCosts)
+					{
 						iPropCount = GetPropSlotsUsed(_oEnchantable);
+						iPropCount += 1; // add this ip.
+					}
+					else
+					{
+						iPropCount = GetCostSlotsUsed(_oEnchantable);
+						iPropCount += StringToInt(Get2DAString(ITEM_PROP_DEF_2DA, COL_ITEM_PROP_DEF_SLOTS, iPropTypeFirst));
+					}
 
 					// add the quantity of potential ip's from SetProps
 					if (!bTCC_SetPropsAreFree)
@@ -990,9 +1126,9 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 // Final Check ->
 					// perform final slot check
 					// grant a bonus if the Caster is of Epic Level (21+)
-					if (iCasterLevel < 21 && iTCC_BasePropSlots <= iLowCutoff)
+					if (iCasterLevel < 21 && iTCC_BasePropSlots < iLowCutoff)
 					{
-						if (iTCC_BasePropSlots + iTCC_EpicPropSlotBonus > iLowCutoff)
+						if (iTCC_BasePropSlots + iTCC_EpicPropSlotBonus >= iLowCutoff)
 						{
 //							NotifyPlayer(oCrafter, ERROR_TARGET_HAS_MAX_ENCHANTMENTS_NON_EPIC);
 							NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
@@ -1006,7 +1142,7 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 						}
 						return;
 					}
-					else if (iCasterLevel > 20 && iTCC_BasePropSlots + iTCC_EpicPropSlotBonus <= iLowCutoff)
+					else if (iCasterLevel > 20 && iTCC_BasePropSlots + iTCC_EpicPropSlotBonus < iLowCutoff)
 					{
 //						NotifyPlayer(oCrafter, ERROR_TARGET_HAS_MAX_ENCHANTMENTS);
 						NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
@@ -1018,7 +1154,8 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 		}
 
 
-// +++ all criteria good to go, add ItemProperty ->
+// +++ all criteria good to go, add ItemProperty +++
+
 		TellCraft(". . ALL CHECKS PASSED");
 
 		// if this is a Property Set recipe handle it
@@ -1029,7 +1166,7 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 			// NOTE: reagents are NOT destroyed.
 			DeleteLocalInt(_oEnchantable, TCC_VAR_SET_PREP_ITEM);
 
-			SetLocalString(_oEnchantable, TCC_VAR_SET_IP, sEncodedIp);
+			SetLocalString(_oEnchantable, TCC_VAR_SET_IP, sEncodedIpFirst); // TODO: Loop all encoded-ips.
 
 			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_SUCCESS
 						+ "The Set-item has been enchanted ! The reagents are intact.");
@@ -1040,16 +1177,33 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 
 			DestroyReagents();
 
-			int iPolicy = X2_IP_ADDPROP_POLICY_REPLACE_EXISTING;
-			if (isIgnoredIp(ipEnchant))
-				iPolicy = X2_IP_ADDPROP_POLICY_IGNORE_EXISTING;
+			rTok = GetStringTokenizer(sEncodedIps, ENCODED_IP_LIST_DELIMITER); // reset Tokenizer.
+			while (CheckMoreTokens(rTok))
+			{
+				rTok = AdvanceTokenizer(rTok);
+				sEncodedIp = GetCurrentToken(rTok);
 
-			IPSafeAddItemProperty(_oEnchantable,
-								  ipEnchant,
-								  0.f,
-								  iPolicy,
-								  FALSE,
-								  isIgnoredSubtype(ipEnchant));
+				iPropType = GetIntParam(sEncodedIp, 0, REAGENT_LIST_DELIMITER);
+				TellCraft(". . . . ADD iPropType= " + IntToString(iPropType));
+				ipEnchant = IPGetItemPropertyByID(iPropType,
+												  GetIntParam(sEncodedIp, 1, REAGENT_LIST_DELIMITER),
+												  GetIntParam(sEncodedIp, 2, REAGENT_LIST_DELIMITER),
+												  GetIntParam(sEncodedIp, 3, REAGENT_LIST_DELIMITER),
+												  GetIntParam(sEncodedIp, 4, REAGENT_LIST_DELIMITER));
+
+				int iPolicy;
+				if (isIgnoredIp(ipEnchant))
+					iPolicy = X2_IP_ADDPROP_POLICY_IGNORE_EXISTING;
+				else
+					iPolicy = X2_IP_ADDPROP_POLICY_REPLACE_EXISTING;
+
+				IPSafeAddItemProperty(_oEnchantable,
+									  ipEnchant,
+									  0.f,
+									  iPolicy,
+									  FALSE,
+									  isIgnoredSubtype(ipEnchant));
+			}
 
 			if (!GetPlotFlag(_oEnchantable))
 				GuiEnchantedLabel(oCrafter, _oEnchantable);
@@ -1092,9 +1246,9 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 
 // Gets the row of Crafting.2da that matches input-variables.
 // - note: Distillation uses GetRecipeMatch() directly.
-void GetRecipeMatchSorted()
+void GetRecipeMatchSortReagents()
 {
-	//TellCraft("GetRecipeMatchSorted() _sTriggerId= " + _sTriggerId);
+	//TellCraft("GetRecipeMatchSortReagents() _sTriggerId= " + _sTriggerId);
 	GetReagentTags();
 	//TellCraft(". _sReagentTags= " + _sReagentTags);
 	GetRecipeMatch();
@@ -1181,7 +1335,7 @@ void GetRecipeMatch()
 			default:
 				sTypesValid = Get2DAString(CRAFTING_2DA, COL_CRAFTING_TAGS, _iRecipeIdFirst);
 				//TellCraft(". . . sTypesValid= " + sTypesValid);
-				if (isTypeMatch(sTypesValid)) // || !GetIsObjectValid(_oEnchantable) <- taken care of by setting Tcc_Config.2da "TAGS" to "0" (TCC-type none)
+				if (isTypeTaggedType(sTypesValid)) // || !GetIsObjectValid(_oEnchantable) <- taken care of by setting Tcc_Config.2da "TAGS" to "0" (TCC-type none)
 				{																		// for all Sets *except Set #1* which is "-1" (TCC-type any)
 					//TellCraft(". . . . TypeMatch TRUE");
 					_iRecipeId = _iRecipeIdFirst;
@@ -1202,13 +1356,13 @@ void GetRecipeMatch()
 //			 ie. the triggerspells for Imbue_Item recipes ("" if none found)
 void GetRecipeMatches()
 {
-	//TellCraft("GetRecipeMatches() ( " + GetName(_oEnchantable) + " )");
+	//TellCraft("GetRecipeMatches() ( " + (GetIsObjectValid(_oEnchantable) ? GetName(_oEnchantable) : "construction") + " )");
 
 	GetReagentTags();
 	//TellCraft(". _sReagentTags= " + _sReagentTags);
 
 	string sTypesValid;
-	int iPropType;
+//	int iPropType, bLegal;
 
 	GetTriggerRange(); // get Crafting.2da rows per Crafting_Index.2da for SPELL_IMBUE_ITEM
 	//TellCraft(". _iRecipeIdFirst= " + IntToString(_iRecipeIdFirst) + " _iRecipeIdLast=" + IntToString(_iRecipeIdLast));
@@ -1228,10 +1382,10 @@ void GetRecipeMatches()
 			default:
 				sTypesValid = Get2DAString(CRAFTING_2DA, COL_CRAFTING_TAGS, _iRecipeIdFirst);
 				//TellCraft(". . sTypesValid #" + IntToString(_iRecipeIdFirst) + "= " + sTypesValid);
-				if (isTypeMatch(sTypesValid)) // || !GetIsObjectValid(_oEnchantable) <- taken care of by setting Tcc_Config.2da "TAGS" to "0" (TCC-type none)
+				if (isTypeTaggedType(sTypesValid)) // || !GetIsObjectValid(_oEnchantable) <- taken care of by setting Tcc_Config.2da "TAGS" to "0" (TCC-type none)
 				{																		// for all Sets *except Set #1* which is "-1" (TCC-type any)
 					//TellCraft(". . . TYPEMATCH _iRecipeIdFirst= " + IntToString(_iRecipeIdFirst));
-//					int bAdd = TRUE;
+//					bLegal = TRUE;
 //					if (GetIsObjectValid(_oEnchantable))
 //					{
 						// NOTE: This is also checked in DoMagicCrafting() under bEnchant.
@@ -1244,12 +1398,12 @@ void GetRecipeMatches()
 //						if (!GetIsLegalItemProp(GetBaseItemType(_oEnchantable), iPropType))
 //						{
 							//TellCraft(". . . . . ip is NOT Legal for type !");
-//							bAdd = FALSE;
+//							bLegal = FALSE;
 //						}
 						//else TellCraft(". . . . . ip is Legal for type !");
 //					}
 					//else TellCraft(". . . . _oEnchantable NOT Valid - NO check for Legal proptype !");
-//					if (bAdd)
+//					if (bLegal)
 //					{
 					if (_sRecipeList != "") _sRecipeList += REAGENT_LIST_DELIMITER;
 					_sRecipeList += IntToString(_iRecipeIdFirst);
@@ -1504,14 +1658,14 @@ void GetTriggerRange()
 	{
 		int bFound = FALSE;
 
-		int iIndTotal = GetNum2DARows(CRAFTING_INDEX_2DA);
-		//TellCraft(". Crafting Index total rows= " + IntToString(iIndTotal));
-		int iInd;
-		for (iInd = 0; iInd != iIndTotal; ++iInd)
+		int iTotal = GetNum2DARows(CRAFTING_INDEX_2DA);
+		//TellCraft(". Crafting Index total rows= " + IntToString(iTotal));
+		int i;
+		for (i = 0; i != iTotal; ++i)
 		{
-			if (Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_CATEGORY, iInd) == _sTriggerId)
+			if (Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_CATEGORY, i) == _sTriggerId)
 			{
-				//TellCraft(". . FOUND= " + IntToString(iInd));
+				//TellCraft(". . FOUND= " + IntToString(i));
 				bFound = TRUE;
 				break;
 			}
@@ -1525,13 +1679,13 @@ void GetTriggerRange()
 		}
 		else
 		{
-			_iRecipeIdFirst = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, iInd));
+			_iRecipeIdFirst = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, i));
 			//TellCraft(". . _iRecipeIdFirst= " + IntToString(_iRecipeIdFirst));
 
-			if (iIndTotal - 1 == _iRecipeIdFirst)
+			if (iTotal - 1 == _iRecipeIdFirst)
 				_iRecipeIdLast = _iRecipeIdFirst;
 			else
-				_iRecipeIdLast = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, iInd + 1)) - 1;
+				_iRecipeIdLast = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, i + 1)) - 1;
 
 			//TellCraft(". . _iRecipeIdLast= " + IntToString(_iRecipeIdLast));
 		}
@@ -1546,12 +1700,12 @@ void GetTriggerRange()
 		}
 		else
 		{
-			int iInd = 0;
-			while (isSpellId(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_CATEGORY, iInd)))
-				++iInd;
+			int i = 0;
+			while (isSpellId(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_CATEGORY, i)))
+				++i;
 
 			_iRecipeIdFirst = 0;
-			_iRecipeIdLast  = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, iInd)) - 1;
+			_iRecipeIdLast  = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, i)) - 1;
 		}
 	}
 }
@@ -1627,19 +1781,17 @@ void CreateProducts(string sResrefList,
 	while (sResref != "")
 	{
 		//TellCraft(". resref= " + sResref);
+		oCreate = OBJECT_INVALID;
+
 		if (iBonus != -1)
 		{
-			//TellCraft(". masterwork !");
 			oCreate = CreateItemOnObject(sResref + TCC_MASTERWORK_SUF, oContainer);
-			if (!GetIsObjectValid(oCreate))
-			{
-				//TellCraft(". . WARNING : no masterwork resref ( " + sResref + TCC_MASTERWORK_SUF + " )");
-				oCreate = CreateItemOnObject(sResref, oContainer);
-			}
+			//TellCraft(". . masterwork !" + (GetIsObjectValid(oCreate) ? "" : " WARNING : no masterwork resref ( " + sResref + TCC_MASTERWORK_SUF + " )");
 		}
-		else
+
+		if (!GetIsObjectValid(oCreate))
 		{
-			//TellCraft("creating : " + sResref);
+			//TellCraft(". creating : " + sResref);
 			oCreate = CreateItemOnObject(sResref, oContainer);
 		}
 
@@ -1647,10 +1799,16 @@ void CreateProducts(string sResrefList,
 		{
 			if (iBonus != -1)
 			{
-				SetLocalInt(oCreate, TCC_VAR_MASTERWORK, TRUE);	// TODO: remove +1 Attack bonus from .Uti's
-																// ie. Allow masterwork items to have no attack bonus
-				if (iBonus > 0)									// but are still eligible for extra enchanted IPs.
-					ApplyMasterworkBonus(oCreate, iBonus);		// TODO: how does this play with damage bonuses from base-materials
+				// TODO: remove +1 Attack bonus from .Uti's
+				// ie. Allow masterwork items to have no Attack-bonus but are
+				// still eligible for bonus property-slots.
+				if (iBonus > 0)
+				{
+					SetLocalInt(oCreate, TCC_VAR_MASTERWORK, iBonus);
+					ApplyMasterworkBonus(oCreate, iBonus); // TODO: how does this play with damage bonuses from base-materials
+				}
+				else
+					SetLocalInt(oCreate, TCC_VAR_MASTERWORK, -1); // confusing but this means Masterwork w/ bonus=0.
 			}
 
 			// TODO: Set the base-material of a crafted item per the ingot-type used when forging it.
@@ -1668,6 +1826,7 @@ void CreateProducts(string sResrefList,
 }
 
 // Applies bonuses to crafted masterwork oItem.
+// TODO: Ranged ammunition bonus.
 void ApplyMasterworkBonus(object oItem, int iBonus)
 {
 	int bMelee = IPGetIsMeleeWeapon(oItem);
@@ -1762,9 +1921,9 @@ int GetIsException(object oItem)
 // Checks if the type of _oEnchantable matches allowed values in Crafting.2da "TAGS".
 // - if TAGS is prepended with a "B" the search is by BaseItem.2da type
 // - if not then search is done by TCC-type
-int isTypeMatch(string sTypesValid)
+int isTypeTaggedType(string sTypesValid)
 {
-	//TellCraft("isTypeMatch() ( " + GetName(_oEnchantable) + " BaseType= "
+	//TellCraft("isTypeTaggedType() ( " + GetName(_oEnchantable) + " BaseType= "
 	//		+ IntToString(GetBaseItemType(_oEnchantable)) + " ) sTypesValid= " + sTypesValid);
 
 	if (!GetIsObjectValid(_oEnchantable))
@@ -1776,11 +1935,8 @@ int isTypeMatch(string sTypesValid)
 			//TellCraft(". . ret TRUE");
 			return TRUE;
 		}
-		//TellCraft(". . ret FALSE");
-		return FALSE;
 	}
-
-	if (GetStringLeft(sTypesValid, 1) == "B")
+	else if (GetStringLeft(sTypesValid, 1) == "B")
 	{
 		//TellCraft(". search by Base-types for " + IntToString(GetBaseItemType(_oEnchantable)));
 		sTypesValid = GetStringRight(sTypesValid, GetStringLength(sTypesValid) - 1);
@@ -1969,7 +2125,7 @@ const int TCC_TYPE_BACK 			= 80; // BASE_ITEM_CLOAK
 // Gets the TCC-type of oItem.
 // - this returns one of the following TCC-types. If oItem needs to be compared
 //   to a multi-TCC-type like TCC_TYPE_MISC_EQUIPPABLE or TCC_TYPE_ARMOR_SHIELD
-//   that needs to be done elsewhere, eg. isTypeMatch()
+//   that needs to be done elsewhere, eg. isTypeTaggedType()
 // @return -
 // - TCC_TYPE_NONE
 // - TCC_TYPE_HEAD
@@ -2174,19 +2330,19 @@ int GetMaterialType(object oItem)
 		for (i = 0; i != iLength; ++i)
 		{
 			sMaterial = GetSubString(sTag, i, 5);
-			//TellCraft(". . test= " + sMaterial);
+			//TellCraft(". . test= " + sMaterial);										// TCCid:	-> stockId:
 			if (sMaterial == "_ada_") iMaterial = GMATERIAL_METAL_ADAMANTINE;			//  1
 			if (sMaterial == "_cld_") iMaterial = GMATERIAL_METAL_COLD_IRON;			//  2
 			if (sMaterial == "_drk_") iMaterial = GMATERIAL_METAL_DARKSTEEL;			//  3
-			if (sMaterial == "_dsk_") iMaterial = GMATERIAL_WOOD_DUSKWOOD;				//  4 ->  7
+			if (sMaterial == "_dsk_") iMaterial = GMATERIAL_WOOD_DUSKWOOD;				//  4		->  7
 			if (sMaterial == "_mth_") iMaterial = GMATERIAL_METAL_MITHRAL;				//  5
-			if (sMaterial == "_rdh_") iMaterial = GMATERIAL_CREATURE_RED_DRAGON;		//  6 ->  9
-			if (sMaterial == "_shd_") iMaterial = GMATERIAL_WOOD_SHEDERRAN;				//  7 -> 13 - shederran ( GMATERIAL_METAL_IRON - not )
-			if (sMaterial == "_slh_") iMaterial = GMATERIAL_CREATURE_SALAMANDER;		//  8 -> 10
-			if (sMaterial == "_slv_") iMaterial = GMATERIAL_METAL_ALCHEMICAL_SILVER;	//  9 ->  6
-			if (sMaterial == "_uhh_") iMaterial = GMATERIAL_CREATURE_UMBER_HULK;		// 10 -> 11
-			if (sMaterial == "_wyh_") iMaterial = GMATERIAL_CREATURE_WYVERN;			// 11 -> 12
-			if (sMaterial == "_zal_") iMaterial = GMATERIAL_WOOD_DARKWOOD;				// 12 ->  8
+			if (sMaterial == "_rdh_") iMaterial = GMATERIAL_CREATURE_RED_DRAGON;		//  6		->  9
+			if (sMaterial == "_shd_") iMaterial = GMATERIAL_WOOD_SHEDERRAN;				//  7		-> 13 - shederran ( GMATERIAL_METAL_IRON - not )
+			if (sMaterial == "_slh_") iMaterial = GMATERIAL_CREATURE_SALAMANDER;		//  8		-> 10
+			if (sMaterial == "_slv_") iMaterial = GMATERIAL_METAL_ALCHEMICAL_SILVER;	//  9		->  6
+			if (sMaterial == "_uhh_") iMaterial = GMATERIAL_CREATURE_UMBER_HULK;		// 10		-> 11
+			if (sMaterial == "_wyh_") iMaterial = GMATERIAL_CREATURE_WYVERN;			// 11		-> 12
+			if (sMaterial == "_zal_") iMaterial = GMATERIAL_WOOD_DARKWOOD;				// 12		->  8 - zalantir
 
 //x2_it_iwoodshldl	Heavy Ironwood Shield
 //x2_it_ironwshlds	Light Ironwood Shield
@@ -2389,6 +2545,26 @@ int isIgnoredSubtype(itemproperty ip)
 		|| Get2DAString(ITEM_PROP_DEF_2DA, COL_ITEM_PROP_DEF_SUBTYPE, iPropType) == "")	// NOTE: Determine if subType needs to be compared;
 	{																					// because even if there is no subType to an ip,
 		return TRUE;																	// it might be set at "-1" or "0", etc. doh!
+	}
+	return FALSE;
+}
+
+// Checks for Attack-bonus on Masterwork weapons.
+int hasMasterworkAttackBonus(object oItem)
+{
+	if (GetLocalInt(oItem, TCC_VAR_MASTERWORK) > 0)
+	{
+		itemproperty ipScan = GetFirstItemProperty(oItem);
+		while (GetIsItemPropertyValid(ipScan))
+		{
+			if (GetItemPropertyDurationType(ipScan) == DURATION_TYPE_PERMANENT
+				&& GetItemPropertyType(ipScan) == ITEM_PROPERTY_ATTACK_BONUS)
+//				&& GetItemPropertyCostTableValue(ipScan) == 1)
+			{
+				return TRUE;
+			}
+			ipScan = GetNextItemProperty(oItem);
+		}
 	}
 	return FALSE;
 }
@@ -2758,7 +2934,7 @@ void DoMundaneCrafting(object oCrafter)
 		return;
 	}
 
-	GetRecipeMatchSorted();
+	GetRecipeMatchSortReagents();
 	//TellCraft(". _iRecipeId= " + IntToString(_iRecipeId));
 
 	if (_iRecipeId == -1)
@@ -2841,7 +3017,7 @@ void DoAlchemyCrafting(object oCrafter)
 {
 	_sTriggerId = ALCHEMY_RECIPE_TRIGGER;
 
-	GetRecipeMatchSorted();
+	GetRecipeMatchSortReagents();
 	//TellCraft("_iRecipeId = " + IntToString(_iRecipeId));
 
 	if (_iRecipeId == -1)

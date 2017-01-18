@@ -15,6 +15,11 @@ TCC config: Toggle_SetAlwaysDestroyNonessence
 
 TCC config: Toggle_SetPrepRecoversReagents
 
+respect DISABLED Property Set recipes gracefully
+
+Add all latent-ips now that multi-ips are possible.
+
+
 ----
 cft_ess_power1	- Faint Power Essence
 cft_ess_power2	- Weak Power Essence
