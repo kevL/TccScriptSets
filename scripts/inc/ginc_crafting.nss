@@ -1682,8 +1682,8 @@ void GetTriggerRange()
 			_iRecipeIdFirst = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, i));
 			//TellCraft(". . _iRecipeIdFirst= " + IntToString(_iRecipeIdFirst));
 
-			if (iTotal - 1 == _iRecipeIdFirst)
-				_iRecipeIdLast = _iRecipeIdFirst;
+			if (iTotal - 1 == i)
+				_iRecipeIdLast = GetNum2DARows(CRAFTING_2DA) - 1;
 			else
 				_iRecipeIdLast = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, i + 1)) - 1;
 
@@ -1704,6 +1704,9 @@ void GetTriggerRange()
 			while (isSpellId(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_CATEGORY, i)))
 				++i;
 
+			// NOTE: This does not account for the fact that spell-triggers could go to the
+			// end of the .2da's; ie, if there are not molds/alchemy/distillation triggers
+			// at the end of the .2da's then '_iRecipeIdLast' needs to be handled as above^
 			_iRecipeIdFirst = 0;
 			_iRecipeIdLast  = StringToInt(Get2DAString(CRAFTING_INDEX_2DA, COL_CRAFTING_START_ROW, i)) - 1;
 		}
