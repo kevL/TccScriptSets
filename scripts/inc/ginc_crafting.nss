@@ -667,8 +667,7 @@ void DoMagicCrafting(int iSpellId, object oCrafter)
 	string sResrefList = Get2DAString(CRAFTING_2DA, COL_CRAFTING_OUTPUT, _iRecipeId);
 	TellCraft(". sResrefList= " + sResrefList);
 
-	int bEnchant = FALSE;
-	if (sResrefList == "") bEnchant = TRUE;
+	int bEnchant = (sResrefList == "");
 	TellCraft(". bEnchant= " + IntToString(bEnchant));
 
 	if (bEnchant)
@@ -2297,7 +2296,7 @@ int hasExcludedProp()
 //int GMATERIAL_METAL_MITHRAL			= 5;
 //int GMATERIAL_METAL_ALCHEMICAL_SILVER	= 6;
 //int GMATERIAL_WOOD_DUSKWOOD			= 7;
-//int GMATERIAL_WOOD_DARKWOOD			= 8; // zalantir
+//int GMATERIAL_WOOD_DARKWOOD			= 8; // zalantar
 //int GMATERIAL_CREATURE_RED_DRAGON		= 9;
 //int GMATERIAL_CREATURE_SALAMANDER		= 10;
 //int GMATERIAL_CREATURE_UMBER_HULK		= 11;
@@ -2345,7 +2344,7 @@ int GetMaterialType(object oItem)
 			if (sMaterial == "_slv_") iMaterial = GMATERIAL_METAL_ALCHEMICAL_SILVER;	//  9		->  6
 			if (sMaterial == "_uhh_") iMaterial = GMATERIAL_CREATURE_UMBER_HULK;		// 10		-> 11
 			if (sMaterial == "_wyh_") iMaterial = GMATERIAL_CREATURE_WYVERN;			// 11		-> 12
-			if (sMaterial == "_zal_") iMaterial = GMATERIAL_WOOD_DARKWOOD;				// 12		->  8 - zalantir
+			if (sMaterial == "_zal_") iMaterial = GMATERIAL_WOOD_DARKWOOD;				// 12		->  8 - zalantar
 
 //x2_it_iwoodshldl	Heavy Ironwood Shield
 //x2_it_ironwshlds	Light Ironwood Shield
@@ -2597,7 +2596,7 @@ int ClearSetParts(object oCrafter)
 		{
 			++iSetParts; // Set-items shall not be stackable, eg. not ranged-ammo
 			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SET_ITEM
-						+ GetName(oItem) + " (" + GetTag(oItem) + " )");
+						+ GetName(oItem) + " ( " + GetTag(oItem) + " )");
 		}
 		oItem = GetNextItemInInventory();
 	}
@@ -2648,7 +2647,7 @@ int CheckLatentPrepared(object oCrafter)
 		{
 			++iParts;
 			NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_SET_PREPITEM
-						+ GetName(oItem) + " (" + GetTag(oItem) + " )");
+						+ GetName(oItem) + " ( " + GetTag(oItem) + " )");
 		}
 		oItem = GetNextItemInInventory();
 	}
@@ -2693,7 +2692,7 @@ int CheckSetCreation(object oCrafter, int iPartsRequired)
 	}
 
 	// First check that item is equippable on the body or hands:
-	int iSlotsValid = 2047;
+	int iSlotsValid = 2047; // 0x7ff [ 0000 0000 0000 0000 0000 0111 1111 1111 ]
 	int iSlot;
 
 	oItem = GetFirstItemInInventory();
@@ -2933,7 +2932,7 @@ void DoMundaneCrafting(object oCrafter)
 	{
 //		NotifyPlayer(oCrafter, ERROR_MISSING_REQUIRED_MOLD);
 		NotifyPlayer(oCrafter, NOTE_CRAFT + NOTE_RESULT_FAIL
-					+" No mold found.");
+					+ "No mold found.");
 		return;
 	}
 
